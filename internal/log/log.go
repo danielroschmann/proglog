@@ -3,10 +3,12 @@ package log
 import (
 	"os"
 	"path"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
+
+	api "github.com/danielroschmann/proglog/api/v1"
 )
 
 type Log struct {
@@ -45,10 +47,7 @@ func (l *Log) setup() error {
 		off, _ := strconv.ParseUint(offStr, 10, 0)
 		baseOffsets = append(baseOffsets, off)
 	}
-
-	sort.Slice(baseOffsets, func(i, j int) bool {
-		return baseOffsets[i] < baseOffsets[j]
-	})
+	slices.Sort(baseOffsets)
 
 	for i := 0; i < len(baseOffsets); i++ {
 		if err = l.newSegment(baseOffsets[i]); err != nil {
@@ -62,6 +61,20 @@ func (l *Log) setup() error {
 		}
 	}
 	return nil
+}
+
+func (l *Log) Append(record *api.Record) (uint64, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	off, err := l.activeSegment.Append(record)
+	if err != nil {
+		return 0, err
+	}
+
+	if l.activeSegment.IsMaxed() {
+		err = l.newSegment(off + 1)
+	}
+	return off, err
 }
 
 func (l *Log) newSegment(off uint64) error {
