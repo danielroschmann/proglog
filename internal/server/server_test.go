@@ -2,19 +2,36 @@ package server
 
 import (
 	"context"
+	"flag"
 	"net"
 	"os"
 	"testing"
 
 	api "github.com/danielroschmann/proglog/api/v1"
+	"github.com/danielroschmann/proglog/internal/auth"
 	"github.com/danielroschmann/proglog/internal/config"
 	"github.com/danielroschmann/proglog/internal/log"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
 )
+
+var debug = flag.Bool("debug", false, "Enable observability for debugging")
+
+func TestMain(m *testing.M) {
+	flag.Parse()
+	if *debug {
+		logger, err := zap.NewDevelopment()
+		if err != nil {
+			panic(err)
+		}
+		zap.ReplaceGlobals(logger)
+	}
+	os.Exit(m.Run())
+}
 
 func TestServer(t *testing.T) {
 	for scenario, fn := range map[string]func(
@@ -72,6 +89,7 @@ func setupTest(t *testing.T, fn func(*Config)) (rootClient api.LogServiceClient,
 		KeyFile:       config.ServerKeyFile,
 		CAFile:        config.CAFILE,
 		ServerAddress: l.Addr().String(),
+		Server:        true,
 	})
 	require.NoError(t, err)
 	serverCreds := credentials.NewTLS(serverTLSConfig)
@@ -79,8 +97,10 @@ func setupTest(t *testing.T, fn func(*Config)) (rootClient api.LogServiceClient,
 	clog, err := log.NewLog(dir, log.Config{})
 	require.NoError(t, err)
 
+	authorizer := auth.New(config.ACLModelFile, config.ACLPolicyFile)
 	cfg = &Config{
-		CommitLog: clog,
+		CommitLog:  clog,
+		Authorizer: authorizer,
 	}
 
 	if fn != nil {
