@@ -6,6 +6,7 @@ import (
 	"net"
 	"sync"
 
+	api "github.com/danielroschmann/proglog/api/v1"
 	"github.com/danielroschmann/proglog/internal/auth"
 	"github.com/danielroschmann/proglog/internal/discovery"
 	"github.com/danielroschmann/proglog/internal/log"
@@ -113,4 +114,60 @@ func (a *Agent) setupServer() error {
 		}
 	}()
 	return err
+}
+
+func (a *Agent) setupMembership() error {
+	rpcAddr, err := a.Config.RPCAddr()
+	if err != nil {
+		return err
+	}
+	var opts []grpc.DialOption
+	if a.Config.PeerTLSConfig != nil {
+		opts = append(opts, grpc.WithTransportCredentials(credentials.NewTLS(a.Config.PeerTLSConfig)))
+	}
+	conn, err := grpc.NewClient(rpcAddr, opts...)
+	if err != nil {
+		return err
+	}
+	client := api.NewLogServiceClient(conn)
+	a.replicator = &log.Replicator{
+		DialOptions: opts,
+		LocalServer: client,
+	}
+
+	a.membership, err = discovery.New(a.replicator, discovery.Config{
+		NodeName: a.Config.NodeName,
+		BindAddr: a.Config.BindAddr,
+		Tags: map[string]string{
+			"rpc_addr": rpcAddr,
+		},
+		StartJoinAddrs: a.Config.StartJoinAddrs,
+	})
+	return err
+}
+
+func (a *Agent) Shutdown() error {
+	a.shutdownLock.Lock()
+	defer a.shutdownLock.Unlock()
+	if a.shutdown {
+		return nil
+	}
+	a.shutdown = true
+	close(a.shutdowns)
+
+	shutdown := []func() error{
+		a.membership.Leave,
+		a.replicator.Close,
+		func() error {
+			a.server.GracefulStop()
+			return nil
+		},
+		a.log.Close,
+	}
+	for _, fn := range shutdown {
+		if err := fn(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
