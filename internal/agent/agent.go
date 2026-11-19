@@ -6,10 +6,13 @@ import (
 	"net"
 	"sync"
 
+	"github.com/danielroschmann/proglog/internal/auth"
 	"github.com/danielroschmann/proglog/internal/discovery"
 	"github.com/danielroschmann/proglog/internal/log"
+	"github.com/danielroschmann/proglog/internal/server"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 )
 
 type Agent struct {
@@ -76,5 +79,38 @@ func (a *Agent) setupLogger() error {
 func (a *Agent) setupLog() error {
 	var err error
 	a.log, err = log.NewLog(a.Config.DataDir, log.Config{})
+	return err
+}
+
+func (a *Agent) setupServer() error {
+	authorizer := auth.New(a.Config.ACLModelFile, a.Config.ACLPolicyFile)
+	serverConfig := &server.Config{
+		CommitLog:  a.log,
+		Authorizer: authorizer,
+	}
+
+	var opts []grpc.ServerOption
+	if a.Config.ServerTLSConfig != nil {
+		creds := credentials.NewTLS(a.Config.ServerTLSConfig)
+		opts = append(opts, grpc.Creds(creds))
+	}
+	var err error
+	a.server, err = server.NewGRPCServer(serverConfig, opts...)
+	if err != nil {
+		return err
+	}
+	rpcAddr, err := a.RPCAddr()
+	if err != nil {
+		return err
+	}
+	ln, err := net.Listen("tcp", rpcAddr)
+	if err != nil {
+		return err
+	}
+	go func() {
+		if err := a.server.Serve(ln); err != nil {
+			_ = a.Shutdown()
+		}
+	}()
 	return err
 }
