@@ -8,6 +8,7 @@ import (
 
 	"github.com/danielroschmann/proglog/internal/discovery"
 	"github.com/danielroschmann/proglog/internal/log"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
 
@@ -42,4 +43,32 @@ func (c Config) RPCAddr() (string, error) {
 		return "", err
 	}
 	return fmt.Sprintf("%s:%d", host, c.RPCPort), nil
+}
+
+func New(config Config) (*Agent, error) {
+	a := &Agent{
+		Config:    config,
+		shutdowns: make(chan struct{}),
+	}
+	setup := []func() error{
+		a.setupLogger,
+		a.setupLog,
+		a.setupServer,
+		a.setupMembership,
+	}
+	for _, fn := range setup {
+		if err := fn(); err != nil {
+			return nil, err
+		}
+	}
+	return a, nil
+}
+
+func (a *Agent) setupLogger() error {
+	logger, err := zap.NewDevelopment()
+	if err != nil {
+		return err
+	}
+	zap.ReplaceGlobals(logger)
+	return nil
 }
