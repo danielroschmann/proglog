@@ -6,9 +6,15 @@ import (
 )
 
 var (
-	CAFILE         = configFile("ca.pem")
-	ServerCertFile = configFile("server.pem")
-	ServerKeyFile  = configFile("server-key.pem")
+	CAFILE               = configFile("ca.pem")
+	ServerCertFile       = configFile("server.pem")
+	ServerKeyFile        = configFile("server-key.pem")
+	RootClientCertFile   = configFile("root-client.pem")
+	RootClientKeyFile    = configFile("root-client-key.pem")
+	NobodyClientCertFile = configFile("nobody-client.pem")
+	NobodyClientKeyFile  = configFile("nobody-client-key.pem")
+	ACLModelFile         = configFile("model.conf")
+	ACLPolicyFile        = configFile("policy.csv")
 )
 
 func configFile(fileName string) string {
@@ -21,5 +27,5 @@ func configFile(fileName string) string {
 		panic(err)
 	}
 
-	return filepath.Join(homeDir, "repos/.proglog", fileName)
+	return filepath.Join(homeDir, ".proglog", fileName)
 }
