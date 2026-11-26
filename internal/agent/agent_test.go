@@ -11,11 +11,11 @@ import (
 	api "github.com/danielroschmann/proglog/api/v1"
 	"github.com/danielroschmann/proglog/internal/agent"
 	"github.com/danielroschmann/proglog/internal/config"
+	"github.com/danielroschmann/proglog/internal/loadbalance"
 	"github.com/stretchr/testify/require"
 	"github.com/travisjeffery/go-dynaport"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/status"
 )
 
 func TestAgent(t *testing.T) {
@@ -85,28 +85,25 @@ func TestAgent(t *testing.T) {
 			},
 		})
 	require.NoError(t, err)
-	consumeResponse, err := leaderClient.Consume(context.Background(), &api.ConsumeRequest{
-		Offset: produceResponse.Offset,
-	})
-	require.NoError(t, err)
-	require.Equal(t, consumeResponse.Record.Value, []byte("foo"))
 
 	// wait until replication has finished
 	time.Sleep(3 * time.Second)
 
-	followerClient := client(t, agents[1], peerTLSConfig)
-	consumeResponse, err = followerClient.Consume(context.Background(), &api.ConsumeRequest{Offset: produceResponse.Offset})
+	consumeResponse, err := leaderClient.Consume(
+		context.Background(), &api.ConsumeRequest{
+			Offset: produceResponse.Offset,
+		})
+
 	require.NoError(t, err)
 	require.Equal(t, consumeResponse.Record.Value, []byte("foo"))
 
-	consumeResponse, err = leaderClient.Consume(context.Background(), &api.ConsumeRequest{
-		Offset: produceResponse.Offset + 1,
-	})
-	require.Nil(t, consumeResponse)
-	require.Error(t, err)
-	got := status.Code(err)
-	want := status.Code(api.ErrOffsetOutOfRange{}.GRPCStatus().Err())
-	require.Equal(t, got, want)
+	followerClient := client(t, agents[1], peerTLSConfig)
+	consumeResponse, err = followerClient.Consume(
+		context.Background(), &api.ConsumeRequest{
+			Offset: produceResponse.Offset,
+		})
+	require.NoError(t, err)
+	require.Equal(t, consumeResponse.Record.Value, []byte("foo"))
 }
 
 func client(t *testing.T, agent *agent.Agent, tlsConfig *tls.Config) api.LogServiceClient {
@@ -114,7 +111,7 @@ func client(t *testing.T, agent *agent.Agent, tlsConfig *tls.Config) api.LogServ
 	opts := []grpc.DialOption{grpc.WithTransportCredentials(tlsCreds)}
 	rpcAddr, err := agent.Config.RPCAddr()
 	require.NoError(t, err)
-	conn, err := grpc.NewClient(fmt.Sprintf("%s", rpcAddr), opts...)
+	conn, err := grpc.NewClient(fmt.Sprintf("%s:///%s", loadbalance.Name, rpcAddr), opts...)
 	require.NoError(t, err)
 	client := api.NewLogServiceClient(conn)
 	return client

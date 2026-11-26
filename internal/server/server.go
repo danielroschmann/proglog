@@ -153,6 +153,14 @@ func (s *grpcServer) ConsumeStream(req *api.ConsumeRequest, stream api.LogServic
 	}
 }
 
+func (s *grpcServer) GetServers(ctx context.Context, req *api.GetServersRequest) (*api.GetServersResponse, error) {
+	servers, err := s.GetServerer.GetServers()
+	if err != nil {
+		return nil, err
+	}
+	return &api.GetServersResponse{Servers: servers}, nil
+}
+
 type CommitLog interface {
 	Append(*api.Record) (uint64, error)
 	Read(uint64) (*api.Record, error)
