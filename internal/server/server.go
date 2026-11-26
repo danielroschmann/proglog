@@ -24,8 +24,13 @@ import (
 )
 
 type Config struct {
-	CommitLog  CommitLog
-	Authorizer Authorizer
+	CommitLog   CommitLog
+	Authorizer  Authorizer
+	GetServerer GetServerer
+}
+
+type GetServerer interface {
+	GetServers() ([]*api.Server, error)
 }
 
 const (
@@ -33,8 +38,6 @@ const (
 	produceAction  = "produce"
 	consumeAction  = "consume"
 )
-
-var _ api.LogServiceServer = (*grpcServer)(nil)
 
 func NewGRPCServer(config *Config, grpcOpts ...grpc.ServerOption) (*grpc.Server, error) {
 	logger := zap.L().Named("server")
