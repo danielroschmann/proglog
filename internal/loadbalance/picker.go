@@ -56,6 +56,10 @@ func (p *Picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 func (p *Picker) nextFollower() balancer.SubConn {
 	cur := atomic.AddUint64(&p.current, uint64(1))
 	len := uint64(len(p.followers))
-	idx := int(cur & len)
+	idx := int(cur % len)
 	return p.followers[idx]
+}
+
+func init() {
+	balancer.Register(base.NewBalancerBuilder(Name, &Picker{}, base.Config{}))
 }
